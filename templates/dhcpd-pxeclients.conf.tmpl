@@ -1,0 +1,16 @@
+# Paste into your AWB dhcpd.conf, replacing the existing "pxeclients" class.
+# Requires (usually already present in an AWB dhcpd.conf):
+#   option arch code 93 = unsigned integer 16;
+# DO NOT touch the AppleNBI / BSDP class — Macs match a different vendor-class
+# and never see any of this.
+class "pxeclients" {
+    match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
+    next-server @@AWB_HOST_IP@@;
+    if (option arch = 00:07 or option arch = 00:09) {
+        filename "ipxe/ipxe.efi";            # x86-64 UEFI
+    } elsif (option arch = 00:06) {
+        filename "ipxe/i386-ipxe.efi";       # ia32 UEFI
+    } else {
+        filename "ipxe/undionly.kpxe";       # legacy BIOS
+    }
+}

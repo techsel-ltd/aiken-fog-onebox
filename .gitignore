@@ -1,0 +1,7 @@
+# Site-specific config (copy config.example.env -> config.env)
+config.env
+# Rendered artifacts from templates
+*.rendered
+# VM disk images / seeds if built locally
+*.qcow2
+*-seed.iso

@@ -1,0 +1,47 @@
+#!ipxe
+# Rendered by scripts/50-setup-menu.sh into ${TFTP_ROOT}/default.ipxe
+# NOTE: the filename MUST be default.ipxe — FOG's iPXE binaries embed
+#   chain tftp://${next-server}/default.ipxe
+# and ignore the DHCP filename on their second pass. See docs/TROUBLESHOOTING.md.
+set awb-server @@AWB_HOST_IP@@
+set fog-server @@FOG_VM_IP@@
+set http-port  @@HTTP_PORT@@
+
+:start
+menu Network boot menu
+item --gap -- --------------- imaging ---------------
+item awb     Aiken WorkBench
+item fog     FOG Project
+item --gap -- ---------------- other ----------------
+item local   Boot from local disk
+item shell   iPXE shell
+item reboot  Reboot
+choose --timeout 5000 --default awb target && goto ${target}
+goto awb
+
+:awb
+# iPXE loads the AWB kernel/initrd directly (no grub). Served over HTTP for speed.
+# WARNING: this line is a hand-mirror of AWB's grub.cfg — if AWB ships a new
+# kernel or changes its cmdline, re-sync this entry or AWB boots stale/broken.
+kernel http://${awb-server}:${http-port}/@@AWB_KERNEL@@ root=/dev/nfs nfsroot=${awb-server}:@@AWB_NFS_EXPORT@@ ip=dhcp rw @@AWB_CMDLINE_EXTRA@@ --
+initrd http://${awb-server}:${http-port}/@@AWB_INITRD@@
+boot || goto failed
+
+:fog
+params
+param mac0 ${net0/mac}
+param arch ${buildarch}
+param platform ${platform}
+param sysuuid ${uuid}
+chain -ar http://${fog-server}/fog/service/ipxe/boot.php##params || goto failed
+
+:local
+sanboot --no-describe --drive 0x80 || goto failed
+:shell
+shell || goto start
+:reboot
+reboot
+:failed
+echo Boot failed.
+prompt --timeout 10000 Press a key for the iPXE shell
+shell

@@ -1,0 +1,12 @@
+version: 2
+ethernets:
+  svc:
+    match:
+      macaddress: "@@SVC_MAC@@"
+    set-name: svc
+    addresses: [@@FOG_VM_IP@@/@@PXE_PREFIX@@]
+  uplink:
+    match:
+      macaddress: "@@UPLINK_MAC@@"
+    set-name: uplink
+    dhcp4: true
