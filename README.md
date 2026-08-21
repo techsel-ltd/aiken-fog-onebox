@@ -134,6 +134,11 @@ BSDP class untouched**.
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the failure modes worth
 knowing before you start.
 
+## Credits
+
+Written by Damian K Labudek at Techsel Ltd, a computer refurbishment business in
+Warrington, UK. See [AUTHORS](AUTHORS).
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Techsel Ltd.
