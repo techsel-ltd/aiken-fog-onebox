@@ -36,6 +36,12 @@ sudo virt-install --name "$FOG_VM_NAME" --memory "$FOG_VM_RAM_MB" --vcpus "$FOG_
      --network network="$LIBVIRT_NAT_NET",mac="$UPLINK_MAC",model=virtio \
      --import --graphics none --noautoconsole
 
+msg "Enabling autostart so the guest returns after a host reboot"
+# Without this the domain is created with "Autostart: disable" and simply does
+# not come back when the host reboots — FOG is silently absent until someone
+# notices imaging is down and starts it by hand.
+sudo virsh autostart "$FOG_VM_NAME"
+
 msg "Waiting for the guest to answer SSH on $FOG_VM_IP ..."
 for _ in $(seq 1 40); do
   if bash -c "echo > /dev/tcp/$FOG_VM_IP/22" 2>/dev/null; then msg "guest is up"; break; fi

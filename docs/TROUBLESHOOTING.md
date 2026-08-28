@@ -55,6 +55,79 @@ ls /dev/kvm                              # exists
 You do **not** need VT-d/IOMMU — that's only for PCI passthrough, which a
 virtual-disk VM doesn't use. Don't add `intel_iommu=on` for this.
 
+## FOG VM is `shut off` — was it suspended, or destroyed?
+
+Two different failures look identical in `virsh list`, and only one is harmless.
+
+```bash
+sudo virsh dominfo "$FOG_VM_NAME" | grep -iE 'state|managed save'
+```
+
+| Output | Meaning |
+|---|---|
+| `State: shut off` + **`Managed save: yes`** | Suspended safely. Memory is on disk and will be restored. |
+| `State: shut off` + **`Managed save: no`** | Genuinely destroyed. Any in-flight imaging is gone. |
+
+**`virsh domstate` alone cannot tell these apart** — it prints `shut off` for
+both. Always check the `Managed save` field.
+
+### Why a guest gets shut down behind your back
+
+The usual culprit is **`libvirt-guests`**, not systemd killing qemu.
+`libvirt-daemon-system` ships `libvirtd.service` with `KillMode=process`, so
+qemu is never reaped as a child of the daemon — restarting `libvirtd` leaves
+guests running and simply re-attaches to them.
+
+`libvirt-guests` is the service that acts on guests, and its built-in default
+is `ON_SHUTDOWN=shutdown`. Whenever it stops — host reboot, package upgrade,
+or an admin stopping it by hand — it shuts every running guest down. If
+`/etc/default/libvirt-guests` only sets timeouts (the stock file does), that
+default applies silently.
+
+`10-install-host-deps.sh` now sets:
+
+```sh
+ON_SHUTDOWN=suspend      # managedsave to disk and restore, instead of destroying
+ON_BOOT=start            # resume whatever was suspended
+```
+
+On an existing install, set those by hand and `systemctl enable libvirt-guests`.
+
+### Testing this — restarting libvirtd proves nothing
+
+```bash
+sudo systemctl restart libvirtd          # does NOT exercise the failure path
+```
+
+A restart never stops `libvirt-guests`, so the VM keeps running and libvirtd
+re-attaches. That looks like a pass and tells you nothing. Test the real path:
+
+```bash
+sudo systemctl stop  libvirt-guests
+sudo virsh dominfo "$FOG_VM_NAME" | grep -i 'managed save'   # expect: yes
+sudo systemctl start libvirt-guests
+sudo virsh domstate  "$FOG_VM_NAME"                          # expect: running
+```
+
+## FOG VM does not come back after a host reboot
+
+Separate cause from the above, and it bites even with `ON_SHUTDOWN=suspend`
+set — the domain was created without autostart:
+
+```bash
+sudo virsh dominfo "$FOG_VM_NAME" | grep -i autostart    # 'disable' = it will not return
+sudo virsh autostart "$FOG_VM_NAME"                      # writes /etc/libvirt/qemu/autostart/
+systemctl is-enabled libvirtd                            # must be 'enabled' for the chain to hold
+```
+
+`30-provision-fog-vm.sh` now does this at build time. Older installs need it
+applied by hand once.
+
+> `virsh list --all` showing **no domains at all** is usually not a lost VM —
+> an unprivileged user without membership in the `libvirt` group reads the
+> session URI rather than the system one. Use `sudo virsh`, or add the user to
+> the group.
+
 ## AWB boots, but with a stale/old kernel after an AWB update
 
 Because iPXE loads AWB's kernel directly, `default.ipxe`'s `:awb` entry is a
