@@ -71,7 +71,8 @@ $EDITOR config.env               # set interfaces, IPs, AWB paths
 cd scripts
 ./10-install-host-deps.sh        # qemu-kvm, libvirt, virtinst, lighttpd (distro pkgs)
 ./20-create-bridge.sh            # bridge PXE_IFACE so the FOG VM shares the segment
-./30-provision-fog-vm.sh         # Debian 12 cloud image + cloud-init, two NICs
+./30-provision-fog-vm.sh         # Debian 12 cloud image (checksum-verified) + cloud-init
+#   -> if FOG_IMAGES_ZVOL is set, format and mount the guest's vdb at /images now
 ./40-install-fog.sh              # FOG 1.5.x inside the VM, unattended, dodhcp=n
 ./50-setup-menu.sh               # stage iPXE binaries + default.ipxe; prints the dhcpd class
 #   -> paste the printed class into your AWB dhcpd.conf, `dhcpd -t`, restart it
@@ -92,7 +93,7 @@ BSDP class untouched**.
 |---|---|---|
 | 10 | installs packages, checks KVM | apt remove |
 | 20 | creates `br-pxe`, enslaves `PXE_IFACE`, moves the host's PXE IP onto it | `nmcli con down br-pxe`; re-enable the old profile |
-| 30 | creates the FOG VM (disk + seed ISO under `/var/lib/libvirt/images`) | `virsh destroy fog; virsh undefine fog` |
+| 30 | creates the FOG VM (disk + seed ISO under `/var/lib/libvirt/images`); optionally attaches `FOG_IMAGES_ZVOL` as `vdb` | `virsh destroy fog; virsh undefine fog` |
 | 40 | nothing on the host — installs FOG **inside the guest** | delete the VM |
 | 50 | writes `TFTP_ROOT/ipxe/*` and `TFTP_ROOT/default.ipxe`; you edit `dhcpd.conf` | restore your `dhcpd.conf` backup |
 | 60 | points lighttpd at `TFTP_ROOT` on `:8080` | `systemctl stop lighttpd` |
@@ -121,13 +122,47 @@ BSDP class untouched**.
 | iPXE loads the AWB kernel directly (no grub) | One less layer, and enables HTTP boot. **Trade-off:** `default.ipxe`'s kernel line mirrors AWB's `grub.cfg` by hand — re-sync it if AWB's kernel changes. |
 | Menu file named `default.ipxe`; no DHCP `user-class` logic | FOG's iPXE binaries hardcode `chain …/default.ipxe` and ignore the DHCP filename on their second pass. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). |
 | Kernel/initrd over HTTP (lighttpd :8080) | TFTP's lockstep transfer is the boot bottleneck; HTTP streams it ~10–15× faster. Port 8080 avoids AWB's `:80`. |
+| Cloud image checksum verified **before** `qemu-img resize` | `resize` rewrites the file, so a hash checked afterwards proves nothing. `DEBIAN_IMAGE_SHA512` is required, and the URL is pinned to a dated directory because `latest/` moves under you. |
+| `/images` on a block device (`FOG_IMAGES_ZVOL`), not an NFS mount from the host | FOG must itself NFS-export `/images` to the imaging clients. Fed by NFS, it would be **re-exporting an NFS mount** — which needs `fsid=` on every export, refuses file locks and delegations outright, and which the linux-nfs wiki warns not to reboot. A block device lets FOG export a genuinely local filesystem. |
 
 ---
 
+## Multicast (UDPcast)
+
+Deploying one image to many machines at once. The scripts don't configure this,
+but the setup they produce is compatible with it, and there is one trap worth
+knowing before you try.
+
+FOG and the clients are already on the same L2 segment, which is the hard
+requirement — udpcast does not cross a router without multicast routing. FOG's
+settings then come from `.fogsettings` (`FOG_UDPCAST_INTERFACE` must be the
+guest's imaging NIC, `svc` here); check them under **FOG Configuration → FOG
+Settings**.
+
+**The trap: IGMP snooping with no querier.** A snooping switch only forwards
+multicast to ports it has learned have subscribers, and it learns that from IGMP
+queries. On an isolated imaging segment nothing sends queries — so snooping
+silently prunes the traffic and multicast "just hangs". **This applies twice**,
+because a Linux bridge does its own snooping and will prune multicast to the FOG
+guest's own tap.
+
+On a dedicated imaging segment the simplest reliable answer is to turn snooping
+off on both the bridge and the switch VLAN — the traffic is destined for every
+client anyway:
+
+```bash
+nmcli con mod br-pxe bridge.multicast-snooping no   # persistent
+```
+
+The alternative is an IGMP querier on the segment. Note NetworkManager before
+1.24 cannot set `bridge.multicast-querier`, so on older hosts that route needs a
+systemd unit writing to `/sys/class/net/br-pxe/bridge/multicast_querier`.
+
+> Not yet exercised end-to-end by this repo's testing — the settings and the
+> snooping behaviour are documented, a real multi-machine deploy is not.
+
 ## Not covered (yet)
 
-- **Multicast (UDPcast)** deploys for imaging many machines at once — the real
-  throughput lever for mass imaging; a good next addition.
 - Production hardening (TLS, the FOG portal's default `fog`/`password` — change
   it), and DR/replication of your images.
 

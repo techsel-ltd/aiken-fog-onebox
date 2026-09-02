@@ -4,9 +4,17 @@
 . "$(dirname "$0")/lib.sh"; load_config
 
 msg "Installing host packages (qemu-kvm, libvirt, virtinst, lighttpd, genisoimage)"
+# --no-install-recommends keeps this lean (69 packages -> 39 on Ubuntu 20.04).
+# The three extras below are then REQUIRED explicitly, because they are only
+# Recommends and dropping them breaks things quietly:
+#   qemu-utils    - provides qemu-img, used to resize the cloud image (step 30)
+#   dnsmasq-base  - libvirt's default NAT network needs it; without it the guest
+#                   has no uplink and installfog.sh cannot fetch anything
+#   iptables      - libvirt's NAT forwarding rules
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-     qemu-kvm libvirt-daemon-system libvirt-clients virtinst \
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+     qemu-kvm qemu-utils libvirt-daemon-system libvirt-clients virtinst \
+     dnsmasq-base iptables \
      lighttpd genisoimage
 
 msg "Checking hardware virtualisation (VT-x/AMD-V)"

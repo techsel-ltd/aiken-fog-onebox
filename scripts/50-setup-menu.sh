@@ -20,7 +20,9 @@ msg "Writing $TFTP_ROOT/default.ipxe"
 render "$TMPL/default.ipxe.tmpl" /tmp/default.ipxe.rendered \
   "AWB_HOST_IP=$AWB_HOST_IP" "FOG_VM_IP=$FOG_VM_IP" "HTTP_PORT=$HTTP_PORT" \
   "AWB_KERNEL=$AWB_KERNEL" "AWB_INITRD=$AWB_INITRD" "AWB_NFS_EXPORT=$AWB_NFS_EXPORT" \
-  "AWB_CMDLINE_EXTRA=$AWB_CMDLINE_EXTRA"
+  "AWB_CMDLINE_EXTRA=$AWB_CMDLINE_EXTRA" \
+  "MENU_TITLE=${MENU_TITLE:-Network boot menu}" \
+  "MENU_TIMEOUT_MS=${MENU_TIMEOUT_MS:-5000}"
 sudo cp /tmp/default.ipxe.rendered "$TFTP_ROOT/default.ipxe"
 
 msg "dhcpd class to paste into your AWB dhcpd.conf (replaces the existing pxeclients class):"
