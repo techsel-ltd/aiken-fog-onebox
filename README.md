@@ -161,6 +161,47 @@ systemd unit writing to `/sys/class/net/br-pxe/bridge/multicast_querier`.
 > Not yet exercised end-to-end by this repo's testing — the settings and the
 > snooping behaviour are documented, a real multi-machine deploy is not.
 
+## Memory sizing, if you back `/images` with ZFS
+
+Using `FOG_IMAGES_ZVOL` on a ZFS pool means the ARC now competes for host RAM.
+Default `zfs_arc_max` is **half of RAM**, which is usually too much here.
+
+```
+ARC = total RAM − guest RAM − host reserve
+```
+
+**Size the host reserve properly, because ARC caches only ZFS.** The things a
+PXE/imaging host reads most are frequently *not* on the pool:
+
+- the **AWB diskless root** (`AWB_NFS_EXPORT`) that every client NFS-mounts
+- the guest's own qcow2 under `/var/lib/libvirt/images`
+- the TFTP root
+
+Those live on the ordinary filesystem and are served by the **page cache**, which
+ARC does not cover and actively competes with. Sizing ARC to "all the remaining
+RAM" starves the diskless-boot path — the one thing every client touches.
+
+A worked example on a 78 GiB host: 8 GiB guest, **12 GiB host reserve** (~2 GiB
+processes + ~6 GiB page cache for the non-ZFS hot set + burst), 56 GiB ARC.
+
+```bash
+echo "options zfs zfs_arc_max=<bytes>" | sudo tee /etc/modprobe.d/zfs.conf
+echo <bytes> | sudo tee /sys/module/zfs/parameters/zfs_arc_max   # live, no reboot
+```
+
+Leave `primarycache=all` on the zvol. Setting `primarycache=metadata` stops ARC
+caching zvol data so the guest's page cache does it instead — the wrong trade
+when ARC is the far larger cache. The guest does double-cache hot blocks, but
+that duplication is small relative to ARC and not worth optimising away.
+
+Tune on measurement once real imaging has happened, not on this arithmetic:
+
+```bash
+awk '/^size/{s=$3} /^c_max/{c=$3} /^hits/{h=$3} /^misses/{m=$3} \
+  END{printf "ARC %.1f/%.1f GiB, hit %.1f%%\n", s/2^30, c/2^30, 100*h/(h+m)}' \
+  /proc/spl/kstat/zfs/arcstats
+```
+
 ## Not covered (yet)
 
 - Production hardening (TLS, the FOG portal's default `fog`/`password` — change
