@@ -8,7 +8,7 @@ set fog-server @@FOG_VM_IP@@
 set http-port  @@HTTP_PORT@@
 
 :start
-menu Network boot menu
+menu @@MENU_TITLE@@
 item --gap -- --------------- imaging ---------------
 item awb     Aiken WorkBench
 item fog     FOG Project
@@ -16,7 +16,7 @@ item --gap -- ---------------- other ----------------
 item local   Boot from local disk
 item shell   iPXE shell
 item reboot  Reboot
-choose --timeout 5000 --default awb target && goto ${target}
+choose --timeout @@MENU_TIMEOUT_MS@@ --default awb target && goto ${target}
 goto awb
 
 :awb
