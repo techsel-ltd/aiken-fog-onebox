@@ -163,6 +163,72 @@ sudo nmcli con mod <PXE_IFACE> connection.autoconnect yes
 sudo nmcli con up <PXE_IFACE>
 ```
 
+## Everything worked, then the first reboot broke PXE entirely
+
+**The single most expensive trap in this whole setup.** It is latent: the build
+verifies green, clients boot, and then a reboot days later takes it all down.
+
+**Symptom.** No client gets an address. `PXE_IFACE` has the bridge's IP on it,
+the bridge no longer lists it as a member, and there are two routes for the
+segment — the one on `PXE_IFACE` with no metric, so it wins:
+
+```
+10.10.0.0/24 dev eth1                            <- wins
+10.10.0.0/24 dev br-pxe  ... metric 425
+```
+
+`/var/log/syslog` shows dhcpd refusing to start:
+
+```
+dhcpd: Multiple interfaces match the same subnet: eth1 br-pxe
+dhcpd: Not configured to listen on any interfaces!
+dhcpd: exiting.
+```
+
+**Cause.** NetworkManager on Debian/Ubuntu commonly runs with
+`plugins=ifupdown,keyfile` and `managed=true`. Any stanza in
+`/etc/network/interfaces` is therefore **regenerated as an NM connection profile
+on every boot and activated**, pulling the NIC out of the bridge.
+
+**Deleting the NM profile does not fix it.** It comes back after the next reboot
+with a *new UUID* — which is the tell. Nor does `autoconnect no`: the profile
+still activates on an explicit `up`, and it holds its address the whole time it
+exists. The file is the source.
+
+**Fix.** `20-create-bridge.sh` now comments the stanza out automatically (with a
+timestamped backup) before creating the bridge. If you built the bridge by hand,
+do it yourself:
+
+```bash
+sudo cp -a /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
+# comment out the stanza for PXE_IFACE; leave 'auto lo' alone
+sudo nmcli con delete <the-generated-uuid>
+sudo nmcli con up <BRIDGE>-<PXE_IFACE>
+```
+
+**Then reboot and check all three.** Nothing short of a reboot proves it:
+
+```bash
+ip -br addr show <PXE_IFACE>          # MUST be empty
+ls /sys/class/net/<BRIDGE>/brif/      # MUST list <PXE_IFACE>
+ip route | grep <your PXE subnet>     # MUST be exactly one line
+```
+
+## Four things that will lie to you
+
+Worth knowing before you trust any of them while debugging:
+
+| Check | The lie | Use instead |
+|---|---|---|
+| `systemctl is-active isc-dhcp-server` | Reports **active** while dhcpd has already exited. The unit looks healthy and serves nothing. | `ss -lnup \| grep :67`, and the `Listening on LPF/...` line in syslog |
+| `tftpd-hpa` logs | Without `--verbose` it logs **only errors**, so a successful transfer is completely silent. Absence of log lines looks exactly like failure. | Add `--verbose` to `TFTP_OPTIONS` while commissioning |
+| `systemctl show <unit> -p Result` after `systemd-run --collect` | `--collect` deletes the unit the moment it exits, and querying a unit that no longer exists returns `Result=success` / `ExecMainStatus=0`. The check can never fail. | Don't use `--collect` on anything whose exit status you intend to read |
+| `zpool list` with a mismatched ZFS userland/kmod | Reported `ALLOC 0` on a pool holding 963 GB. | `zfs list` |
+
+Also: `tftp: client does not accept options` in the log is usually **benign** —
+UEFI firmware declining the tsize/blksize offer. It is not evidence of the
+failure you are chasing.
+
 ## HTTP boot returns 404 for the kernel
 
 `lighttpd`'s `server.document-root` must be your **TFTP root** (so
