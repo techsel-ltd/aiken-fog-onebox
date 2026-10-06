@@ -85,6 +85,8 @@ your AWB `dhcpd.conf`, because that file is yours and every site's is a little
 different. It replaces the existing `pxeclients` class and **leaves the Apple
 BSDP class untouched**.
 
+The menu render has tests that need no root and no network: `bash tests/render-menu.test.sh`.
+
 ---
 
 ## What each step changes
@@ -124,6 +126,7 @@ BSDP class untouched**.
 | Kernel/initrd over HTTP (lighttpd :8080) | TFTP's lockstep transfer is the boot bottleneck; HTTP streams it ~10–15× faster. Port 8080 avoids AWB's `:80`. |
 | Cloud image checksum verified **before** `qemu-img resize` | `resize` rewrites the file, so a hash checked afterwards proves nothing. `DEBIAN_IMAGE_SHA512` is required, and the URL is pinned to a dated directory because `latest/` moves under you. |
 | `/images` on a block device (`FOG_IMAGES_ZVOL`), not an NFS mount from the host | FOG must itself NFS-export `/images` to the imaging clients. Fed by NFS, it would be **re-exporting an NFS mount** — which needs `fsid=` on every export, refuses file locks and delegations outright, and which the linux-nfs wiki warns not to reboot. A block device lets FOG export a genuinely local filesystem. |
+| Site entries via `MENU_EXTRA_FILE`, not edits to the template | Your own tools (an OS installer, a diagnostics image) get menu items without forking the template, so updates still merge cleanly. Each entry only chains to a URL you serve; `efi`/`pcbios` entries are hidden on the other firmware. Entries are validated before anything on the host changes, and with the file unset the menu is byte-identical to the stock one (`tests/render-menu.test.sh`). |
 
 ---
 
