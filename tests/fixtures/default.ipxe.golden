@@ -3,29 +3,28 @@
 # NOTE: the filename MUST be default.ipxe — FOG's iPXE binaries embed
 #   chain tftp://${next-server}/default.ipxe
 # and ignore the DHCP filename on their second pass. See docs/TROUBLESHOOTING.md.
-set awb-server @@AWB_HOST_IP@@
-set fog-server @@FOG_VM_IP@@
-set http-port  @@HTTP_PORT@@
+set awb-server 10.10.0.1
+set fog-server 10.10.0.2
+set http-port  8080
 
 :start
-menu @@MENU_TITLE@@
+menu Network boot menu
 item --gap -- --------------- imaging ---------------
 item awb     Aiken WorkBench
 item fog     FOG Project
-@@MENU_EXTRA_ITEMS@@
 item --gap -- ---------------- other ----------------
 item local   Boot from local disk
 item shell   iPXE shell
 item reboot  Reboot
-choose --timeout @@MENU_TIMEOUT_MS@@ --default awb target && goto ${target}
+choose --timeout 5000 --default awb target && goto ${target}
 goto awb
 
 :awb
 # iPXE loads the AWB kernel/initrd directly (no grub). Served over HTTP for speed.
 # WARNING: this line is a hand-mirror of AWB's grub.cfg — if AWB ships a new
 # kernel or changes its cmdline, re-sync this entry or AWB boots stale/broken.
-kernel http://${awb-server}:${http-port}/@@AWB_KERNEL@@ root=/dev/nfs nfsroot=${awb-server}:@@AWB_NFS_EXPORT@@ ip=dhcp rw @@AWB_CMDLINE_EXTRA@@ --
-initrd http://${awb-server}:${http-port}/@@AWB_INITRD@@
+kernel http://${awb-server}:${http-port}/boot/vmlinuz root=/dev/nfs nfsroot=${awb-server}:/awbclient ip=dhcp rw quiet --
+initrd http://${awb-server}:${http-port}/boot/initrd.img-awb
 boot || goto failed
 
 :fog
@@ -35,7 +34,6 @@ param arch ${buildarch}
 param platform ${platform}
 param sysuuid ${uuid}
 chain -ar http://${fog-server}/fog/service/ipxe/boot.php##params || goto failed
-@@MENU_EXTRA_TARGETS@@
 
 :local
 sanboot --no-describe --drive 0x80 || goto failed

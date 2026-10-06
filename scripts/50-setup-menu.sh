@@ -5,6 +5,10 @@
 #  - print the dhcpd class to paste into your AWB dhcpd.conf
 . "$(dirname "$0")/lib.sh"; load_config
 
+# Render first: a bad MENU_EXTRA_FILE stops here, before anything on the host changes.
+menu="$(mktemp)"; trap 'rm -f "$menu"' EXIT
+render_menu "$menu"
+
 msg "Pulling FOG's iPXE binaries from the guest into $TFTP_ROOT/ipxe/"
 sudo mkdir -p "$TFTP_ROOT/ipxe"
 tmp="$(mktemp)"
@@ -17,13 +21,7 @@ sudo chown -R root:root "$TFTP_ROOT/ipxe"; sudo chmod -R a+rX "$TFTP_ROOT/ipxe"
 rm -f "$tmp"
 
 msg "Writing $TFTP_ROOT/default.ipxe"
-render "$TMPL/default.ipxe.tmpl" /tmp/default.ipxe.rendered \
-  "AWB_HOST_IP=$AWB_HOST_IP" "FOG_VM_IP=$FOG_VM_IP" "HTTP_PORT=$HTTP_PORT" \
-  "AWB_KERNEL=$AWB_KERNEL" "AWB_INITRD=$AWB_INITRD" "AWB_NFS_EXPORT=$AWB_NFS_EXPORT" \
-  "AWB_CMDLINE_EXTRA=$AWB_CMDLINE_EXTRA" \
-  "MENU_TITLE=${MENU_TITLE:-Network boot menu}" \
-  "MENU_TIMEOUT_MS=${MENU_TIMEOUT_MS:-5000}"
-sudo cp /tmp/default.ipxe.rendered "$TFTP_ROOT/default.ipxe"
+sudo install -m 0644 "$menu" "$TFTP_ROOT/default.ipxe"   # mktemp files are 0600; tftpd must read it
 
 msg "dhcpd class to paste into your AWB dhcpd.conf (replaces the existing pxeclients class):"
 render "$TMPL/dhcpd-pxeclients.conf.tmpl" /tmp/pxeclients.rendered "AWB_HOST_IP=$AWB_HOST_IP"
