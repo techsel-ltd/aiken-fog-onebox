@@ -6,5 +6,7 @@ server.port          = @@HTTP_PORT@@
 server.username      = "www-data"
 server.groupname     = "www-data"
 server.errorlog      = "/var/log/lighttpd/error.log"
+accesslog.filename   = "/var/log/lighttpd/access.log"
 index-file.names     = ( )
 mimetype.assign      = ( "" => "application/octet-stream" )
+@@HTTP_EXTRA_INCLUDE@@

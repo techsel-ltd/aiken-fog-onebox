@@ -3,12 +3,13 @@
 # kernel/initrd instead of grinding through TFTP's lockstep transfer.
 . "$(dirname "$0")/lib.sh"; load_config
 
-msg "Configuring lighttpd: document-root=$TFTP_ROOT port=$HTTP_PORT"
+msg "Configuring lighttpd: document-root=$TFTP_ROOT port=$HTTP_PORT${HTTP_EXTRA_CONF:+ + include $HTTP_EXTRA_CONF}"
+# Render and test first: a bad HTTP_EXTRA_CONF or a broken include stops here, before the live file changes.
+conf="$(mktemp)"; trap 'rm -f "$conf"' EXIT
+render_http_conf "$conf"
+sudo lighttpd -tt -f "$conf"
 sudo cp -a /etc/lighttpd/lighttpd.conf "/etc/lighttpd/lighttpd.conf.bak.$(date +%s)" 2>/dev/null || true
-render "$TMPL/lighttpd-boot.conf.tmpl" /tmp/lighttpd.rendered \
-  "TFTP_ROOT=$TFTP_ROOT" "HTTP_PORT=$HTTP_PORT"
-sudo cp /tmp/lighttpd.rendered /etc/lighttpd/lighttpd.conf
-sudo lighttpd -t -f /etc/lighttpd/lighttpd.conf
+sudo install -m 0644 "$conf" /etc/lighttpd/lighttpd.conf
 sudo systemctl enable --now lighttpd
 sudo systemctl restart lighttpd
 

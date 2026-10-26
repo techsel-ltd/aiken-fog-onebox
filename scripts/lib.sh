@@ -90,6 +90,22 @@ render_menu() {
     "MENU_EXTRA_ITEMS=$MENU_EXTRA_ITEMS" "MENU_EXTRA_TARGETS=$MENU_EXTRA_TARGETS"
 }
 
+# render_http_conf <output> — lighttpd.conf for HTTP boot from config.env. HTTP_EXTRA_CONF (absolute, or
+# relative to the repo root) is included at the end, so another site's static files (e.g. its own
+# $SERVER["socket"] block) share this one lighttpd process instead of running a second instance.
+# Unset: no include line at all.
+render_http_conf() {
+  local inc="" f="${HTTP_EXTRA_CONF:-}"
+  if [ -n "$f" ]; then
+    case "$f" in /*) ;; *) f="$ROOT/$f" ;; esac
+    [ -f "$f" ] || die "HTTP_EXTRA_CONF not found: $f"
+    [[ "$f" == *[\"@]* ]] && die "HTTP_EXTRA_CONF path must not contain '\"' or '@': $f"
+    inc="include \"$f\""
+  fi
+  render "$TMPL/lighttpd-boot.conf.tmpl" "$1" \
+    "TFTP_ROOT=$TFTP_ROOT" "HTTP_PORT=$HTTP_PORT" "HTTP_EXTRA_INCLUDE=$inc"
+}
+
 # PXE prefix length from netmask (255.255.255.0 -> 24), simple common cases
 prefix_from_netmask() {
   case "$1" in

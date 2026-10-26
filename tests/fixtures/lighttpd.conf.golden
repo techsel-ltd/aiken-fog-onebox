@@ -1,0 +1,11 @@
+# Rendered into /etc/lighttpd/lighttpd.conf by scripts/60-enable-http-boot.sh
+# Serves the AWB TFTP root over HTTP so iPXE can stream the kernel/initrd.
+server.modules      = ( "mod_access", "mod_accesslog" )
+server.document-root = "/awbcboot"
+server.port          = 8080
+server.username      = "www-data"
+server.groupname     = "www-data"
+server.errorlog      = "/var/log/lighttpd/error.log"
+accesslog.filename   = "/var/log/lighttpd/access.log"
+index-file.names     = ( )
+mimetype.assign      = ( "" => "application/octet-stream" )
